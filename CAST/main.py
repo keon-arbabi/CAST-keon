@@ -24,7 +24,7 @@ def CAST_MARK(coords_raw_t,exp_dict_t,output_path_t,task_name_t = None,gpu_t = N
     if args is None:
         args = Args(
             dataname=task_name_t, # name of the dataset, used to save the log file
-            gpu = gpu_t, # gpu id, set to zero for single-GPU nodes
+            gpu = 0, # gpu id, set to zero for single-GPU nodes
             epochs=400, # number of epochs for training
             lr1= 1e-3, # learning rate
             wd1= 0, # weight decay
@@ -53,7 +53,7 @@ def CAST_MARK(coords_raw_t,exp_dict_t,output_path_t,task_name_t = None,gpu_t = N
     print(f'The embedding, log, model files were saved to {output_path_t}')
     return embed_dict
 
-def CAST_STACK(coords_raw,embed_dict,output_path,graph_list,params_dist= None,tmp1_f1_idx = None, mid_visual = False, sub_node_idxs = None, rescale = False, corr_q_r = None, if_embed_sub = False, early_stop_thres = None):
+def CAST_STACK(coords_raw,embed_dict,output_path,graph_list,params_dist= None,tmp1_f1_idx = None, mid_visual = False, sub_node_idxs = None, rescale = False, corr_q_r = None, if_embed_sub = False, early_stop_thres = None, renew_mesh_trans = True):
     ### setting parameters
     query_sample = graph_list[0]
     ref_sample = graph_list[1]
@@ -99,9 +99,10 @@ def CAST_STACK(coords_raw,embed_dict,output_path,graph_list,params_dist= None,tm
         corr_q_r = corr_q_r
     
     # Plot initial coordinates
-    kmeans_plot_multiple(embed_dict,graph_list,coords_raw,prefix_t,output_path,k=15,dot_size = 10) if mid_visual else None
-    corr_heat(coords_raw[query_sample][sub_node_idxs[query_sample]],coords_raw[ref_sample][sub_node_idxs[ref_sample]],corr_q_r,output_path,filename=prefix_t+'_corr') if mid_visual else None
-    plot_mid(coords_raw[query_sample],coords_raw[ref_sample],output_path,f'{prefix_t}_raw')
+    if mid_visual:
+        kmeans_plot_multiple(embed_dict,graph_list,coords_raw,prefix_t,output_path,k=15,dot_size = 10) 
+        corr_heat(coords_raw[query_sample][sub_node_idxs[query_sample]],coords_raw[ref_sample][sub_node_idxs[ref_sample]],corr_q_r,output_path,filename=prefix_t+'_corr') 
+        plot_mid(coords_raw[query_sample],coords_raw[ref_sample],output_path,f'{prefix_t}_raw')
 
     ### Initialize the coordinates and tensor
     corr_q_r = torch.Tensor(corr_q_r).to(params_dist.device)
@@ -147,16 +148,24 @@ def CAST_STACK(coords_raw,embed_dict,output_path,graph_list,params_dist= None,tm
     else:
         embed_stack_t = np.row_stack((embed_dict[query_sample].cpu().detach().numpy(),embed_dict[ref_sample].cpu().detach().numpy()))
     coords_query_r2 = affine_trans_t(params_dist.theta_r2,coords_query_r1)
-    register_result(coords_query_r2.cpu().detach().numpy(),
-                    coords_ref.cpu().detach().numpy(),
-                    max_minus_value_t(corr_q_r).cpu(),
-                    params_dist.bleeding,
-                    embed_stack_t,
-                    output_path,
-                    k=20,
-                    prefix=prefix_t,
-                    scale_t=1,
-                    index_list=[sub_node_idxs[k_t] for k_t in graph_list])# if mid_visual else None
+    
+    # Store affine results
+    coords_affine = {}
+    coords_affine[query_sample] = (coords_query_r2.cpu() + 
+        torch.tensor(params_dist.mean_r)) / result_log['ref_rescale_factor']
+    coords_affine[ref_sample] = coords_raw[ref_sample] / result_log['ref_rescale_factor']
+
+    if mid_visual:
+        register_result(coords_query_r2.cpu().detach().numpy(),
+                        coords_ref.cpu().detach().numpy(),
+                        max_minus_value_t(corr_q_r).cpu(),
+                        params_dist.bleeding,
+                        embed_stack_t,
+                        output_path,
+                        k=20,
+                        prefix=prefix_t,
+                        scale_t=1,
+                        index_list=[sub_node_idxs[k_t] for k_t in graph_list])
     
     if params_dist.iterations_bs[round_t] != 0:
         ### B-Spline free-form deformation 
@@ -190,7 +199,10 @@ def CAST_STACK(coords_raw,embed_dict,output_path,graph_list,params_dist= None,tm
         # register_result(t1[0].cpu().numpy(),(coords_ref - coords_query_r2.min(0)[0]).cpu().numpy(),max_minus_value_t(corr_q_r).cpu(),params_dist.bleeding,embed_stack_t,output_path,k=20,prefix=prefix_t+ '_' + str(round_t) +'_BSpine_' + str(params_dist.iterations_bs[round_t]),index_list=[sub_node_idxs[k_t] for k_t in graph_list])# if mid_visual else None
         result_log['BS_coords_log1'] = t1[4]
         result_log['BS_J1'] = t1[3]
-        setattr(params_dist,'mesh_trans_list',[t1[1]])
+        if renew_mesh_trans:
+            setattr(params_dist,'mesh_trans_list',[t1[1]])
+        else:
+            setattr(params_dist,'mesh_trans_list',[[t1[1][-1]]])
 
     ### Save results
     torch.save(params_dist,os.path.join(output_path,f'{prefix_t}_params.data'))
@@ -201,7 +213,7 @@ def CAST_STACK(coords_raw,embed_dict,output_path,graph_list,params_dist= None,tm
     coords_final[ref_sample] = coords_raw[ref_sample] / result_log['ref_rescale_factor'] ### rescale back to the original scale
     plot_mid(coords_final[query_sample],coords_final[ref_sample],output_path,f'{prefix_t}_align')
     torch.save(coords_final,os.path.join(output_path,f'{prefix_t}_coords_final.data'))
-    return coords_final
+    return coords_affine, coords_final
 
 def CAST_PROJECT(
     sdata_inte, # the integrated dataset
@@ -209,6 +221,7 @@ def CAST_PROJECT(
     target_sample, # the target sample name
     coords_source, # the coordinates of the source sample
     coords_target, # the coordinates of the target sample
+    k2, # select k2 cells to do the projection for each cell
     scaled_layer = 'log2_norm1e4_scaled', # the scaled layer name in `adata.layers`, which is used to be integrated
     raw_layer = 'raw', # the raw layer name in `adata.layers`, which is used to be projected into target sample
     batch_key = 'protocol', # the column name of the samples in `obs`
@@ -219,7 +232,6 @@ def CAST_PROJECT(
     umap_n_pcs = 30, # the `n_pcs` parameter in `sc.pp.neighbors`
     min_dist = 0.01, # the `min_dist` parameter in `sc.tl.umap`
     spread_t = 5, # the `spread` parameter in `sc.tl.umap`
-    k2 = 1, # select k2 cells to do the projection for each cell
     source_sample_ctype_col = 'level_2', # the column name of the cell type in `obs`
     output_path = '', # the output path
     umap_feature = 'X_umap', # the feature used for umap
@@ -270,9 +282,9 @@ def CAST_PROJECT(
         coords_target = coords_target,
         output_path = output_path,
         source_sample_ctype_col = source_sample_ctype_col,
+        k2 = k2,
         target_cell_pc_feature = target_cell_pc_feature,
         source_cell_pc_feature = source_cell_pc_feature,
-        k2 = k2,
         ifplot = ifplot,
         umap_feature = umap_feature,
         ave_dist_fold = ave_dist_fold,

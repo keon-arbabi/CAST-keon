@@ -21,9 +21,9 @@ def space_project(
     coords_target,
     output_path,
     source_sample_ctype_col,
+    k2,
     target_cell_pc_feature = None,
     source_cell_pc_feature = None,
-    k2 = 1,
     ifplot = True,
     umap_feature = 'X_umap',
     ave_dist_fold = 2,
@@ -48,11 +48,13 @@ def space_project(
             print(f'Start to project {ctype_t} cells:')
             idx_ctype_t = np.isin(sdata_inte[idx_target].obs[source_sample_ctype_col],ctype_t)
             ave_dist_t,_,_,_ = average_dist(coords_target[idx_ctype_t,:].copy(),working_memory_t=working_memory_t)
+            print(f'{ave_dist_t=}')
             dist_thres = ave_dist_fold * ave_dist_t + alignment_shift_adjustment
+            print(f'{dist_thres=}')
             if adjust_shift:
                 coords_shift = group_shift(target_cell_pc_feature[idx_ctype_t,:], source_cell_pc_feature, coords_target[idx_ctype_t,:], coords_source, working_memory_t = working_memory_t, metric_t = metric_t)
                 coords_source_t = coords_source + coords_shift
-                print(coords_shift)
+                print(f'{coords_shift=}')
             else:
                 coords_source_t = coords_source.copy()
             project_ind[idx_ctype_t,:],project_weight[idx_ctype_t,:],cdists[idx_ctype_t,:],physical_dist[idx_ctype_t,:],all_avg_feat[idx_ctype_t,:] = physical_dist_priority_project(
@@ -61,25 +63,27 @@ def space_project(
                 coords_target = coords_target[idx_ctype_t,:],
                 coords_source = coords_source_t,
                 source_feat = source_feat,
-                k2 = 1,
+                k2 = k2,
                 pdist_thres = dist_thres,
                 metric_t = metric_t,
                 working_memory_t = working_memory_t)
     else:
         ave_dist_t,_,_,_ = average_dist(coords_target.copy(),working_memory_t=working_memory_t,strategy_t='delaunay')
+        print(f'{ave_dist_t=}')
         dist_thres = ave_dist_fold * ave_dist_t + alignment_shift_adjustment
+        print(f'{dist_thres=}')
         project_ind,project_weight,cdists,physical_dist,all_avg_feat = physical_dist_priority_project(
                 feat_target = target_cell_pc_feature,
                 feat_source = source_cell_pc_feature,
                 coords_target = coords_target,
                 coords_source = coords_source,
                 source_feat = source_feat,
-                k2 = 1,
+                k2 = k2,
                 pdist_thres = dist_thres,
                 working_memory_t = working_memory_t)
 
-    umap_target = sdata_inte[idx_target,:].obsm[umap_feature]
-    umap_source = sdata_inte[idx_source,:].obsm[umap_feature]
+    # umap_target = sdata_inte[idx_target,:].obsm[umap_feature]
+    # umap_source = sdata_inte[idx_source,:].obsm[umap_feature]
 
     sdata_ref.layers[f'{source_sample}_raw'] = csr(all_avg_feat)
     sdata_ref.layers[f'{target_sample}_norm1e4'] = csr(sc.pp.normalize_total(sdata_ref,target_sum=1e4,layer = f'{raw_layer}',inplace=False)['X'])
@@ -87,7 +91,7 @@ def space_project(
     y_true_t = np.array(sdata_inte[idx_target].obs[source_sample_ctype_col].values) if source_sample_ctype_col is not None else None
     y_source = np.array(sdata_inte[idx_source].obs[source_sample_ctype_col].values) if source_sample_ctype_col is not None else None
     y_pred_t = y_source[project_ind[:,0]] if source_sample_ctype_col is not None else None
-    torch.save([physical_dist,project_ind,coords_target,coords_source,y_true_t,y_pred_t,y_source,output_path,source_sample_ctype_col,umap_target,umap_source,source_sample,target_sample,cdists,k2],f'{output_path}/mid_result{batch_t}.pt')
+    torch.save([physical_dist,project_ind,coords_target,coords_source,y_true_t,y_pred_t,y_source,output_path,source_sample_ctype_col,source_sample,target_sample,cdists,k2],f'{output_path}/mid_result{batch_t}.pt')
     if ifplot == True:
         evaluation_project(
             physical_dist = physical_dist,
@@ -152,9 +156,10 @@ def group_shift(feat_target, feat_source, coords_target_t, coords_source_t, work
     coords_shift = np.median(coords_target_t,axis=0) - np.median(coords_source_t[np.array(anchors),:],axis=0)
     return coords_shift
 
-def physical_dist_priority_project(feat_target, feat_source, coords_target, coords_source, source_feat = None, k2 = 1, k_extend = 20, pdist_thres = 200, working_memory_t = 1000, metric_t = 'cosine'):
+def physical_dist_priority_project(feat_target, feat_source, coords_target, coords_source, k2, source_feat = None, k_extend = 5, pdist_thres = 200, working_memory_t = 1000, metric_t = 'cosine'):
     def reduce_func_cdist_priority(chunk_cdist, start):
         chunk_pdist = pairwise_distances(coords_target[start:(chunk_cdist.shape[0] + start),:],coords_source, metric='euclidean', n_jobs=-1)
+        print(f'{pdist_thres=}')
         idx_pdist_t = chunk_pdist < pdist_thres
         idx_pdist_sum = idx_pdist_t.sum(1)
         idx_lessk2 = (idx_pdist_sum>= k2)
@@ -163,10 +168,8 @@ def physical_dist_priority_project(feat_target, feat_source, coords_target, coor
         cosine_knn_cdist = np.zeros_like(cosine_knn_ind).astype(float)
         cosine_knn_physical_dist = np.zeros_like(cosine_knn_ind).astype(float)
         
-        idx_narrow = np.where(idx_lessk2)[0]
-        idx_narrow_reverse = np.where(np.logical_not(idx_lessk2))[0]
-
-        for i in idx_narrow:
+        # Process cells with enough neighbors
+        for i in np.where(idx_lessk2)[0]:
             idx_pdist_t_i = idx_pdist_t[i,:]
             idx_i = np.where(idx_pdist_t[i,:])[0]
             knn_ind_t = idx_i[np.argpartition(chunk_cdist[i,idx_pdist_t_i], k2 - 1, axis=-1)[:k2]]
@@ -175,17 +178,18 @@ def physical_dist_priority_project(feat_target, feat_source, coords_target, coor
             cosine_knn_weight[[i],:] = weight_cell
             cosine_knn_cdist[[i],:] = cdist_cosine
             cosine_knn_physical_dist[[i],:] = chunk_pdist[i,knn_ind_t]
+        
+        # For cells with insufficient neighbors, fill with dummy values
+        idx_narrow_reverse = np.where(~idx_lessk2)[0]
         if len(idx_narrow_reverse) > 0:
-            for i in idx_narrow_reverse:
-                idx_pdist_extend = np.argpartition(chunk_pdist[i,:], k_extend - 1, axis=-1)[:k_extend]
-                knn_ind_t = idx_pdist_extend[np.argpartition(chunk_cdist[i,idx_pdist_extend], k2 - 1, axis=-1)[:k2]]
-                _,weight_cell,cdist_cosine = cosine_IDW(chunk_cdist[i,knn_ind_t],k2 = k2,need_filter=False)
-                cosine_knn_ind[[i],:] = knn_ind_t
-                cosine_knn_weight[[i],:] = weight_cell
-                cosine_knn_cdist[[i],:] = cdist_cosine
-                cosine_knn_physical_dist[[i],:] = chunk_pdist[i,knn_ind_t]
-        return cosine_knn_ind,cosine_knn_weight,cosine_knn_cdist,cosine_knn_physical_dist
-    
+            cosine_knn_ind[idx_narrow_reverse] = 0  # Use 0 as dummy index
+            cosine_knn_weight[idx_narrow_reverse] = 0
+            cosine_knn_cdist[idx_narrow_reverse] = np.inf
+            cosine_knn_physical_dist[idx_narrow_reverse] = np.inf
+        
+        return (cosine_knn_ind, cosine_knn_weight, cosine_knn_cdist, 
+                cosine_knn_physical_dist)
+
     print(f'Using {metric_t} distance to calculate cell low dimensional distance:')
     dists = pairwise_distances_chunked(feat_target, feat_source, metric=metric_t, n_jobs=-1,working_memory = working_memory_t,reduce_func=reduce_func_cdist_priority)
     cosine_knn_inds = []

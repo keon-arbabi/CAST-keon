@@ -113,17 +113,18 @@ def Harmony_integration(
     #### integration based on the Harmony
     sdata_inte.X = sdata_inte.layers[scaled_layer].copy()
     if ifcombat == True:
+        print(f'Running ComBat:')
         sc.pp.combat(sdata_inte, key=batch_key)
     print(f'Running PCA based on the layer {scaled_layer}:')
     sc.tl.pca(sdata_inte, use_highly_variable=use_highly_variable_t, svd_solver = 'full', n_comps= n_components)
     print(f'Running Harmony integration:')
     sc.external.pp.harmony_integrate(sdata_inte, batch_key)
-    print(f'Compute a neighborhood graph based on the {umap_n_neighbors} `n_neighbors`, {umap_n_pcs} `n_pcs`:')
-    sc.pp.neighbors(sdata_inte, n_neighbors=umap_n_neighbors, n_pcs=umap_n_pcs, use_rep='X_pca_harmony')
-    print(f'Generate the UMAP based on the {min_dist} `min_dist`, {spread_t} `spread`:')
-    sc.tl.umap(sdata_inte,min_dist=min_dist, spread = spread_t)
-    sdata_inte.obsm['har_X_umap'] = sdata_inte.obsm['X_umap'].copy()
     if ifplot == True:
+        print(f'Compute a neighborhood graph based on the {umap_n_neighbors} `n_neighbors`, {umap_n_pcs} `n_pcs`:')
+        sc.pp.neighbors(sdata_inte, n_neighbors=umap_n_neighbors, n_pcs=umap_n_pcs, use_rep='X_pca_harmony')
+        print(f'Generate the UMAP based on the {min_dist} `min_dist`, {spread_t} `spread`:')
+        sc.tl.umap(sdata_inte,min_dist=min_dist, spread = spread_t)
+        sdata_inte.obsm['har_X_umap'] = sdata_inte.obsm['X_umap'].copy()
         plt.rcParams.update({'pdf.fonttype':42})
         sc.settings.figdir = output_path
         sc.set_figure_params(figsize=(10, 10),facecolor='white',vector_friendly=True, dpi_save=300,fontsize = 25)

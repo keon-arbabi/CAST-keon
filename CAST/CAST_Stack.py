@@ -57,7 +57,7 @@ def get_range(sp_coords):
     xrng = max(sp_coords, key=lambda x:x[0])[0] - min(sp_coords, key=lambda x:x[0])[0]
     return xrng, yrng
 
-def prelocate(coords_q,coords_r,cov_anchor_it,bleeding,output_path,d_list=[1,2,3],prefix = 'test',ifplot = True,index_list = None,translation_params = None,mirror_t = None):
+def prelocate(coords_q,coords_r,cov_anchor_it,bleeding,output_path,d_list=[1,2,3],prefix = 'test',ifplot = False,index_list = None,translation_params = None,mirror_t = None):
     idx_q = np.ones(coords_q.shape[0],dtype=bool) if index_list is None else index_list[0]
     idx_r = np.ones(coords_r.shape[0],dtype=bool) if index_list is None else index_list[1]
     mirror_t = [1,-1] if mirror_t is None else mirror_t
