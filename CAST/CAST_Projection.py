@@ -82,9 +82,6 @@ def space_project(
                 pdist_thres = dist_thres,
                 working_memory_t = working_memory_t)
 
-    # umap_target = sdata_inte[idx_target,:].obsm[umap_feature]
-    # umap_source = sdata_inte[idx_source,:].obsm[umap_feature]
-
     sdata_ref.layers[f'{source_sample}_raw'] = csr(all_avg_feat)
     sdata_ref.layers[f'{target_sample}_norm1e4'] = csr(sc.pp.normalize_total(sdata_ref,target_sum=1e4,layer = f'{raw_layer}',inplace=False)['X'])
     sdata_ref.layers[f'{source_sample}_norm1e4'] = csr(sc.pp.normalize_total(sdata_ref,target_sum=1e4,layer = f'{source_sample}_raw',inplace=False)['X'])
@@ -93,6 +90,8 @@ def space_project(
     y_pred_t = y_source[project_ind[:,0]] if source_sample_ctype_col is not None else None
     torch.save([physical_dist,project_ind,coords_target,coords_source,y_true_t,y_pred_t,y_source,output_path,source_sample_ctype_col,source_sample,target_sample,cdists,k2],f'{output_path}/mid_result{batch_t}.pt')
     if ifplot == True:
+        umap_target = sdata_inte[idx_target,:].obsm[umap_feature]
+        umap_source = sdata_inte[idx_source,:].obsm[umap_feature]
         evaluation_project(
             physical_dist = physical_dist,
             project_ind = project_ind,
@@ -259,28 +258,28 @@ def evaluation_project(
     exclude_group = 'Other',
     color_dict = None,
     umap_examples = False):
-    print(f'Generate evaluation plots:')
-    plt.rcParams.update({'pdf.fonttype':42, 'font.size' : 15})
-    plt.rcParams['axes.grid'] = False
-    ### histogram ###
-    cdist_hist(physical_dist.flatten(),range_t = [0,2000])
-    plt.savefig(f'{output_path}/physical_dist_hist{batch_t}.pdf')
-    cdist_hist(cdists.flatten(),range_t = [0,2])
-    plt.savefig(f'{output_path}/cdist_hist{batch_t}.pdf')
+    # print(f'Generate evaluation plots:')
+    # plt.rcParams.update({'pdf.fonttype':42, 'font.size' : 15})
+    # plt.rcParams['axes.grid'] = False
+    # ### histogram ###
+    # cdist_hist(physical_dist.flatten(),range_t = [0,2000])
+    # plt.savefig(f'{output_path}/physical_dist_hist{batch_t}.pdf')
+    # cdist_hist(cdists.flatten(),range_t = [0,2])
+    # plt.savefig(f'{output_path}/cdist_hist{batch_t}.pdf')
 
-    ### confusion matrix ###
-    if source_sample_ctype_col is not None:
-        if exclude_group is not None:
-            idx_t = y_true_t != exclude_group
-            y_true_t_use = y_true_t[idx_t]
-            y_pred_t_use = y_pred_t[idx_t]
-        else:
-            y_true_t_use = y_true_t
-            y_pred_t_use = y_pred_t
-        confusion_mat_plot(y_true_t_use,y_pred_t_use)
-        plt.savefig(f'{output_path}/confusion_mat_raw_with_label_{source_sample_ctype_col}{batch_t}.pdf')
-        confusion_mat_plot(y_true_t_use,y_pred_t_use,withlabel = False)
-        plt.savefig(f'{output_path}/confusion_mat_raw_without_label_{source_sample_ctype_col}{batch_t}.pdf')
+    # ### confusion matrix ###
+    # if source_sample_ctype_col is not None:
+    #     if exclude_group is not None:
+    #         idx_t = y_true_t != exclude_group
+    #         y_true_t_use = y_true_t[idx_t]
+    #         y_pred_t_use = y_pred_t[idx_t]
+    #     else:
+    #         y_true_t_use = y_true_t
+    #         y_pred_t_use = y_pred_t
+    #     confusion_mat_plot(y_true_t_use,y_pred_t_use)
+    #     plt.savefig(f'{output_path}/confusion_mat_raw_with_label_{source_sample_ctype_col}{batch_t}.pdf')
+    #     confusion_mat_plot(y_true_t_use,y_pred_t_use,withlabel = False)
+    #     plt.savefig(f'{output_path}/confusion_mat_raw_without_label_{source_sample_ctype_col}{batch_t}.pdf')
 
     ### link plot 3d ###
     if color_dict is not None and source_sample_ctype_col is not None:
@@ -289,16 +288,15 @@ def evaluation_project(
     else:
         color_target="#9295CA" 
         color_source='#E66665'
-    link_plot_3d(project_ind, coords_target, coords_source, k = 1,figsize_t = [10,10], 
-                sample_n=200, link_color_mask = None, 
-                color_target = color_target, color_source = color_source,
-                color_true = "#222222")
-    plt.savefig(f'{output_path}/link_plot{batch_t}.pdf', dpi=300)
+    link_plot_3d(project_ind, coords_target, coords_source, k = 1, 
+                 figsize_t = [30,30], sample_n=500, link_color_mask = None, 
+                 color_target = color_target, color_source = color_source,
+                 color_true = "#222222")
+    plt.savefig(f'{output_path}/link_plot{batch_t}.svg')
 
     ### Umap ###
-    if umap_examples:
-        cdist_check(cdists.copy(),project_ind.copy(),umap_target,umap_source,labels_t=[target_sample,source_sample],random_seed_t=0,figsize_t=[40,32])
-        plt.savefig(f'{output_path}/umap_examples{batch_t}.pdf',dpi = 300)
+    cdist_check(cdists.copy(),project_ind.copy(),umap_target,umap_source,labels_t=[target_sample,source_sample],random_seed_t=0,figsize_t=[40,32])
+    plt.savefig(f'{output_path}/umap_examples{batch_t}.svg')
 
 #################### Visualization ####################
 
@@ -375,51 +373,76 @@ def cdist_check(cdist_t,cdist_idx,umap_coords0,umap_coords1, labels_t = ['query'
         axs[i].set_yticks([])
         axs[i].set_title('cdist = ' + str(format(cdist_t[idx_check,0],'.2f')))
     if output_path_t is not None:
-        plt.savefig(f'{output_path_t}/umap_examples.pdf',dpi = 300)
+        plt.savefig(f'{output_path_t}/umap_examples.svg')
         plt.close('all')
 
-def link_plot_3d(assign_mat, coords_target, coords_source, k, figsize_t = [15,20], sample_n=1000, link_color_mask=None, color_target="#9295CA", color_source='#E66665', color_true = "#999999", color_false = "#999999", remove_background = True):
+def link_plot_3d(assign_mat, coords_target, coords_source, k, 
+                 figsize_t = [30,30], sample_n=1000, link_color_mask=None, 
+                 color_target="#9295CA", color_source='#E66665', 
+                 color_true = "#999999", color_false = "#999999", 
+                 remove_background = True):
     from mpl_toolkits.mplot3d.art3d import Line3DCollection
     assert k == 1
     ax = plt.figure(figsize=figsize_t).add_subplot(projection='3d')
-    xylim = max(coords_source.max(), coords_target.max())
-    ax.set_xlim(0, xylim)
-    ax.set_ylim(0, xylim)
+    
+    # Set proper limits based on min and max of both coordinates
+    xmin = min(coords_source[:,0].min(), coords_target[:,0].min())
+    xmax = max(coords_source[:,0].max(), coords_target[:,0].max())
+    ymin = min(coords_source[:,1].min(), coords_target[:,1].min())
+    ymax = max(coords_source[:,1].max(), coords_target[:,1].max())
+    
+    # Add small padding
+    padding = 0.05 * max(xmax - xmin, ymax - ymin)
+    ax.set_xlim(xmin - padding, xmax + padding)
+    ax.set_ylim(ymin - padding, ymax + padding)
     ax.set_zlim(-0.1, 1.1)
     ax.set_box_aspect([1,1,0.6])
     ax.view_init(elev=25)
 
     coordsidx_transfer_source_link = assign_mat[:, 0]
-    
     coords_transfer_source_link = coords_source[coordsidx_transfer_source_link,:]
-    t1 = np.row_stack((coords_transfer_source_link[:,0],coords_transfer_source_link[:,1])) # source
-    t2 = np.row_stack((coords_target[:,0],coords_target[:,1])) # target
+    t1 = np.row_stack((coords_transfer_source_link[:,0],coords_transfer_source_link[:,1]))
+    t2 = np.row_stack((coords_target[:,0],coords_target[:,1]))
     
-    downsample_indices = np.random.choice(range(coords_target.shape[0]), sample_n)
-    
+    # Reduce sample size since we have many points
+    sample_n = min(sample_n, coords_target.shape[0])
+    indices = np.arange(coords_target.shape[0])
+    downsample_indices = np.random.choice(indices, size=int(sample_n), replace=False)
+
     if link_color_mask is not None:
         final_true_indices = np.intersect1d(downsample_indices, np.where(link_color_mask)[0])
         final_false_indices = np.intersect1d(downsample_indices, np.where(~link_color_mask)[0])
         segs = [[(*t2[:, i], 0), (*t1[:, i], 1)] for i in final_false_indices]
-        line_collection = Line3DCollection(segs, colors=color_false, lw=0.5, linestyles='dashed')
+        line_collection = Line3DCollection(segs, colors=color_false, lw=0.5, 
+                                         linestyles='dashed', alpha=0.3)
         line_collection.set_rasterized(True)
         ax.add_collection(line_collection)
     else:
         final_true_indices = downsample_indices
         
     segs = [[(*t2[:, i], 0), (*t1[:, i], 1)] for i in final_true_indices]
-    line_collection = Line3DCollection(segs, colors=color_true, lw=0.5, linestyles='dashed')
+    line_collection = Line3DCollection(segs, colors=color_true, lw=0.5, 
+                                     linestyles='dashed', alpha=0.3)
     line_collection.set_rasterized(True)
     ax.add_collection(line_collection)
     
-    ### target - z = 0
-    ax.scatter(xs = coords_target[:,0],ys = coords_target[:,1], zs=0, s = 2, c =color_target, alpha = 0.8, ec='none', rasterized=True, depthshade=False)
-    ### source - z = 1
-    ax.scatter(xs = coords_source[:,0],ys = coords_source[:,1], zs=1, s = 2, c =color_source, alpha = 0.8, ec='none', rasterized=True, depthshade=False)
+    # Increase point size and adjust alpha for better visibility
+    ax.scatter(xs = coords_target[:,0], ys = coords_target[:,1], zs=0, 
+              s=5, c=color_target, alpha=0.6, ec='none', 
+              rasterized=True, depthshade=False)
+    ax.scatter(xs = coords_source[:,0], ys = coords_source[:,1], zs=1, 
+              s=5, c=color_source, alpha=0.6, ec='none', 
+              rasterized=True, depthshade=False)
+    
     if remove_background:
-        # Remove axis
         ax.axis('off')
-    # Remove background
     ax.xaxis.pane.fill = False
     ax.yaxis.pane.fill = False
     ax.zaxis.pane.fill = False
+    
+    # Add a title with point counts
+    ax.set_title(f'Target: {coords_target.shape[0]} points\n'
+                f'Source: {coords_source.shape[0]} points\n'
+                f'Links shown: {len(segs)}', pad=20)
+    
+    return ax

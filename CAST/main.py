@@ -259,6 +259,7 @@ def CAST_PROJECT(
             min_dist = min_dist,
             spread_t = spread_t,
             source_sample_ctype_col = source_sample_ctype_col,
+            color_dict = color_dict,
             output_path = output_path,
             n_components = n_components,
             ifplot = True,

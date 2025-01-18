@@ -106,10 +106,12 @@ def Harmony_integration(
     min_dist,
     spread_t,
     source_sample_ctype_col,
+    color_dict,
     output_path,
     n_components = 50,
     ifplot = True,
     ifcombat = False):
+
     #### integration based on the Harmony
     sdata_inte.X = sdata_inte.layers[scaled_layer].copy()
     if ifcombat == True:
@@ -127,9 +129,9 @@ def Harmony_integration(
         sdata_inte.obsm['har_X_umap'] = sdata_inte.obsm['X_umap'].copy()
         plt.rcParams.update({'pdf.fonttype':42})
         sc.settings.figdir = output_path
-        sc.set_figure_params(figsize=(10, 10),facecolor='white',vector_friendly=True, dpi_save=300,fontsize = 25)
+        sc.set_figure_params(figsize=(10, 10),facecolor='white',vector_friendly=True,dpi_save=300,fontsize = 25)
         sc.pl.umap(sdata_inte,color=[batch_key],size=10,save=f'_har_{umap_n_pcs}pcs_batch.pdf')
-        sc.pl.umap(sdata_inte,color=[source_sample_ctype_col],size=10,save=f'_har_{umap_n_pcs}pcs_ctype.pdf') if source_sample_ctype_col is not None else None
+        sc.pl.umap(sdata_inte,color=[source_sample_ctype_col],palette=color_dict,size=10,save=f'_har_{umap_n_pcs}pcs_ctype.pdf') if source_sample_ctype_col is not None else None
     return sdata_inte
 
 def random_sample(coords_t, nodenum, seed_t = 2):
